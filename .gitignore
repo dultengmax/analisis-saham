@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Runtime data
+.cache/
+logs/
+*.log
+
+# Local secrets/config
+.env
+.env.*
+!.env.example
+
+# Large local models
+models/finbert/
+
+# IDE / OS
+.vscode/
+.idea/
+.qodo/
+.DS_Store
+Thumbs.db
+
+# Accidental scratch folder
+{data,analysis,backtest}/

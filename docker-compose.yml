@@ -1,0 +1,13 @@
+services:
+  stock-analyzer:
+    build: .
+    container_name: stock-analyzer
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: 8000
+    volumes:
+      - ./.cache:/app/.cache
+      - ./models:/app/models:ro

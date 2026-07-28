@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stock Analyzer</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="panel input-panel">
+      <div>
+        <p class="eyebrow">IDX Equity Workbench</p>
+        <h1>Stock Analyzer</h1>
+        <p class="copy">Analisa teknikal, fundamental, sentimen, bandarmologi, dan risiko dalam satu layar kerja.</p>
+      </div>
+
+      <form id="analyze-form">
+        <label class="field">
+          <span>Kode saham</span>
+          <input id="tickers" name="tickers" type="text" value="BBCA TLKM" autocomplete="off" placeholder="BBCA TLKM BMRI">
+        </label>
+
+        <div class="checks" aria-label="Opsi tambahan">
+          <label><input type="checkbox" name="backtest"> Backtest</label>
+          <label><input type="checkbox" name="monteCarlo"> Monte Carlo</label>
+          <label><input type="checkbox" name="bootstrap"> Bootstrap</label>
+          <label><input type="checkbox" name="garch"> GARCH</label>
+          <label><input type="checkbox" name="atr"> ATR</label>
+          <label><input type="checkbox" name="vwap"> VWAP</label>
+          <label><input type="checkbox" name="sentiment"> Sentimen</label>
+        </div>
+
+        <button type="submit">Jalankan Analisa</button>
+      </form>
+
+      <div class="screener-box">
+        <div>
+          <p class="eyebrow">Batch Mode</p>
+          <h2>Auto Screener</h2>
+          <p class="copy">Ranking universe IDX tanpa sentimen. Dipakai untuk shortlist awal.</p>
+        </div>
+        <label class="field">
+          <span>Jumlah ticker dicek</span>
+          <input id="max-tickers" type="number" min="5" max="1200" value="1009">
+        </label>
+        <label class="field">
+          <span>Top hasil</span>
+          <input id="screen-limit" type="number" min="5" max="50" value="15">
+        </label>
+        <label class="field">
+          <span>Mode momentum</span>
+          <select id="momentum-mode">
+            <option value="preopen">Pre-Open besok</option>
+            <option value="session2">Sesi 2 / 13:30</option>
+            <option value="intraday">Intraday / jelang close</option>
+          </select>
+        </label>
+        <div class="checks compact" aria-label="Pengaturan pre-open">
+          <label><input type="checkbox" id="relative-strength" checked> RS vs IHSG</label>
+          <label><input type="checkbox" id="accumulation" checked> Akumulasi 5D</label>
+        </div>
+        <button id="screen-btn" type="button">Auto Screener IDX</button>
+        <button id="momentum-btn" type="button">Momentum Harian</button>
+      </div>
+    </section>
+
+    <section class="panel results-panel">
+      <div class="results-head">
+        <div>
+          <p class="eyebrow">Hasil</p>
+          <h2>Ringkasan Saham</h2>
+        </div>
+        <span id="status">Siap</span>
+      </div>
+      <div id="results" class="results empty">Masukkan kode saham lalu klik Analisa.</div>
+    </section>
+  </main>
+
+  <template id="card-template">
+    <article class="stock-card">
+      <header>
+        <div>
+          <h3></h3>
+          <p class="meta"></p>
+        </div>
+        <strong class="badge"></strong>
+      </header>
+
+      <div class="score-row">
+        <div><span>Teknikal</span><b data-key="technical"></b></div>
+        <div><span>Fundamental</span><b data-key="fundamental"></b></div>
+        <div><span>Likuiditas</span><b data-key="liquidity"></b></div>
+        <div><span>Sentimen</span><b data-key="sentiment"></b></div>
+        <div><span>Bandar</span><b data-key="bandarmology"></b></div>
+        <div><span>Komposit</span><b data-key="composite"></b></div>
+      </div>
+
+      <p class="reason"></p>
+      <ul class="flags"></ul>
+      <details>
+        <summary>Detail sinyal</summary>
+        <div class="signals"></div>
+        <div class="extras"></div>
+      </details>
+    </article>
+  </template>
+
+  <template id="screener-template">
+    <article class="screener-card">
+      <header>
+        <div>
+          <h3>Auto Screener IDX</h3>
+          <p class="meta"></p>
+        </div>
+      </header>
+      <div class="screen-table"></div>
+    </article>
+  </template>
+
+  <template id="momentum-template">
+    <article class="screener-card">
+      <header>
+        <div>
+          <h3>Momentum Harian</h3>
+          <p class="meta"></p>
+        </div>
+      </header>
+      <div class="momentum-table"></div>
+    </article>
+  </template>
+
+  <script src="/app.js"></script>
+</body>
+</html>
