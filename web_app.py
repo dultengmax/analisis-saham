@@ -102,12 +102,42 @@ def screen_for_web(limit: int = 15, max_tickers: int = 1009) -> dict:
     }
 
 
+def apply_sector_heat(rows: list[dict]) -> None:
+    from data.price_fetcher import fetch_quick_info
+
+    sectors = {}
+    for row in rows:
+        info = fetch_quick_info(row["ticker"])
+        sector = info.get("sector") or "Unknown"
+        row["sector"] = sector
+        sectors.setdefault(sector, []).append(row)
+
+    for sector_rows in sectors.values():
+        avg_change = sum(item["momentum"]["change_pct"] for item in sector_rows) / len(sector_rows)
+        bonus = 0
+        if len(sector_rows) >= 3 and avg_change > 0:
+            bonus = min(12, round(avg_change * 1.5 + len(sector_rows), 1))
+        elif len(sector_rows) >= 2 and avg_change >= 1:
+            bonus = min(8, round(avg_change * 1.2 + len(sector_rows), 1))
+        elif avg_change >= 5:
+            bonus = 5
+
+        for row in sector_rows:
+            row["sector_heat_bonus"] = bonus
+            if bonus:
+                row["momentum"]["score"] = min(100.0, round(row["momentum"]["score"] + bonus, 1))
+                row["momentum"]["signals"]["sector_heat"] = (
+                    f"sektor panas: {row['sector']} (+{bonus})"
+                )
+
+
 def momentum_for_web(
     limit: int = 15,
     max_tickers: int = 1009,
     mode: str = "preopen",
     use_relative_strength: bool = False,
     use_accumulation: bool = False,
+    use_sector_heat: bool = False,
 ) -> dict:
     from analysis.momentum import evaluate_daily_momentum, evaluate_session2_momentum
     from data.price_fetcher import fetch_price_history
@@ -149,6 +179,9 @@ def momentum_for_web(
                 rows.append({"ticker": ticker, "momentum": momentum})
         except Exception as exc:
             errors.append({"ticker": ticker, "error": str(exc)})
+
+    if use_sector_heat and rows:
+        apply_sector_heat(rows)
 
     rows.sort(key=lambda item: item["momentum"]["score"], reverse=True)
     return {
@@ -195,6 +228,7 @@ class Handler(BaseHTTPRequestHandler):
                     mode=str(payload.get("mode", "preopen")),
                     use_relative_strength=bool(payload.get("relativeStrength")),
                     use_accumulation=bool(payload.get("accumulation")),
+                    use_sector_heat=bool(payload.get("sectorHeat")),
                 ))
                 return
 
@@ -226,7 +260,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     host = os.getenv("WEB_HOST", "127.0.0.1")
-    port = int(os.getenv("WEB_PORT", "8000"))
+    port = int(os.getenv("WEB_PORT", "8002"))
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"Stock Analyzer UI: http://{host}:{port}")
     server.serve_forever()

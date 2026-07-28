@@ -45,9 +45,6 @@ screenBtn.addEventListener("click", async () => {
       body: JSON.stringify({
         maxTickers: Number(document.querySelector("#max-tickers").value || 1009),
         limit: Number(document.querySelector("#screen-limit").value || 15),
-        mode: document.querySelector("#momentum-mode").value,
-        relativeStrength: document.querySelector("#relative-strength").checked,
-        accumulation: document.querySelector("#accumulation").checked,
       }),
     });
     const payload = await response.json();
@@ -73,6 +70,10 @@ momentumBtn.addEventListener("click", async () => {
       body: JSON.stringify({
         maxTickers: Number(document.querySelector("#max-tickers").value || 1009),
         limit: Number(document.querySelector("#screen-limit").value || 15),
+        mode: document.querySelector("#momentum-mode").value,
+        relativeStrength: document.querySelector("#relative-strength").checked,
+        accumulation: document.querySelector("#accumulation").checked,
+        sectorHeat: document.querySelector("#sector-heat").checked,
       }),
     });
     const payload = await response.json();
@@ -131,7 +132,7 @@ function renderMomentum(payload) {
 
   table.innerHTML = `
     <div class="momentum-head">
-      <b>Ticker</b><b>Skor</b><b>Status</b><b>Change</b><b>Vol</b><b>Value</b><b>Breakout</b><b>Sinyal</b>
+      <b>Ticker</b><b>Sektor</b><b>Skor</b><b>Status</b><b>Change</b><b>Vol</b><b>Value</b><b>Bonus</b><b>Sinyal</b>
     </div>
   `;
   payload.results.forEach((item) => {
@@ -140,12 +141,13 @@ function renderMomentum(payload) {
     row.className = "momentum-row";
     row.innerHTML = `
       <b>${item.ticker}</b>
+      <span>${item.sector || "-"}</span>
       <strong>${score(momentum.score)}</strong>
       <span>${momentum.status}</span>
       <span>${momentum.change_pct.toFixed(2)}%</span>
       <span>${momentum.volume_ratio.toFixed(2)}x</span>
       <span>${formatPrice(momentum.value_today)}</span>
-      <span>${momentum.breakout_20d ? "Ya" : "Tidak"}</span>
+      <span>${item.sector_heat_bonus ? "+" + item.sector_heat_bonus : "-"}</span>
       <span>${Object.values(momentum.signals || {}).join(", ")}</span>
     `;
     table.appendChild(row);

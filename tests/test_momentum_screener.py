@@ -129,6 +129,20 @@ class MomentumScreenerTestCase(unittest.TestCase):
         self.assertEqual(result["mode"], "intraday")
         self.assertEqual([item["ticker"] for item in result["results"]], ["FAST"])
 
+    def test_sector_heat_adds_bonus_to_hot_sector(self):
+        rows = [
+            {"ticker": "AAA", "momentum": {"score": 50.0, "change_pct": 3.0, "signals": {}}},
+            {"ticker": "BBB", "momentum": {"score": 50.0, "change_pct": 2.0, "signals": {}}},
+            {"ticker": "CCC", "momentum": {"score": 50.0, "change_pct": 2.0, "signals": {}}},
+        ]
+
+        with patch("data.price_fetcher.fetch_quick_info", return_value={"sector": "Energy"}):
+            web_app.apply_sector_heat(rows)
+
+        self.assertGreater(rows[0]["momentum"]["score"], 50)
+        self.assertEqual(rows[0]["sector"], "Energy")
+        self.assertIn("sector_heat", rows[0]["momentum"]["signals"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,10 +4,10 @@ services:
     container_name: stock-analyzer
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8002:8002"
     environment:
       WEB_HOST: 0.0.0.0
-      WEB_PORT: 8000
+      WEB_PORT: 8002
     volumes:
       - ./.cache:/app/.cache
       - ./models:/app/models:ro

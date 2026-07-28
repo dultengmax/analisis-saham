@@ -264,8 +264,8 @@ button:hover {
 .momentum-head,
 .momentum-row {
   display: grid;
-  grid-template-columns: 80px 70px 90px 80px 70px 120px 90px minmax(300px, 1fr);
-  min-width: 900px;
+  grid-template-columns: 80px 140px 70px 90px 80px 70px 120px 70px minmax(300px, 1fr);
+  min-width: 1020px;
 }
 
 .screen-head {
