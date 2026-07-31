@@ -74,6 +74,9 @@ momentumBtn.addEventListener("click", async () => {
         relativeStrength: document.querySelector("#relative-strength").checked,
         accumulation: document.querySelector("#accumulation").checked,
         sectorHeat: document.querySelector("#sector-heat").checked,
+        sectorNews: document.querySelector("#sector-news").checked,
+        overnightCatalyst: document.querySelector("#overnight-catalyst").checked,
+        ml: document.querySelector("#momentum-ml").checked,
       }),
     });
     const payload = await response.json();
@@ -99,6 +102,7 @@ function renderCard(data) {
   node.querySelector('[data-key="liquidity"]').textContent = score(data.liquidity?.score);
   node.querySelector('[data-key="sentiment"]').textContent = score(data.sentiment?.skor);
   node.querySelector('[data-key="bandarmology"]').textContent = score(data.bandarmology?.skor);
+  node.querySelector('[data-key="ml"]').textContent = score(data.ml?.skor);
   node.querySelector('[data-key="composite"]').textContent = score(data.composite_score);
   node.querySelector(".reason").textContent = data.reason || "";
 
@@ -111,9 +115,11 @@ function renderCard(data) {
   if (!flags.children.length) flags.remove();
 
   node.querySelector(".signals").append(signalBlock("Teknikal", data.technical?.signals));
+  if (data.technical?.fibonacci) node.querySelector(".signals").append(fibonacciBlock(data.technical.fibonacci));
   node.querySelector(".signals").append(signalBlock("Fundamental", data.fundamental?.signals));
   if (data.liquidity) node.querySelector(".signals").append(liquidityBlock(data.liquidity));
   if (data.sentiment) node.querySelector(".signals").append(sentimentBlock(data.sentiment));
+  if (data.ml) node.querySelector(".signals").append(mlBlock(data.ml));
   node.querySelector(".signals").append(bandarmologyBlock(data.bandarmology));
   node.querySelector(".extras").append(extraBlock(data.extras || {}));
   return node;
@@ -121,22 +127,34 @@ function renderCard(data) {
 
 function renderMomentum(payload) {
   const node = momentumTemplate.content.firstElementChild.cloneNode(true);
-  const modeLabel = payload.mode === "preopen" ? "pre-open besok" : payload.mode === "session2" ? "sesi 2 / 13:30" : "intraday/jelang close";
-  node.querySelector("h3").textContent = payload.mode === "preopen" ? "Pre-Open Watchlist" : payload.mode === "session2" ? "Top Gainer Sesi 2" : "Momentum Harian";
-  node.querySelector(".meta").textContent = `${payload.qualified} kandidat ${modeLabel} dari ${payload.checked} ticker dicek`;
+  const labels = {
+    preopen: ["Pre-Open Watchlist", "pre-open besok"],
+    morning: ["Momentum Sesi Pagi", "sesi pagi / 09:15"],
+    session2: ["Top Gainer Sesi 2", "sesi 2 / 13:30"],
+    intraday: ["Momentum Harian", "intraday/jelang close"],
+  };
+  const [title, modeLabel] = labels[payload.mode] || labels.intraday;
+  node.querySelector("h3").textContent = title;
+  const warning = (payload.warnings || [])[0];
+  node.querySelector(".meta").textContent = `${payload.qualified} kandidat ${modeLabel} dari ${payload.checked} ticker dicek${warning ? " - " + warning : ""}`;
   const table = node.querySelector(".momentum-table");
   if (!payload.results.length) {
-    table.textContent = "Belum ada kandidat momentum yang lolos filter.";
+    table.textContent = payload.errors?.length
+      ? `${payload.errors.length} contoh kegagalan data: ${payload.errors[0].error}`
+      : "Belum ada kandidat momentum yang lolos filter.";
     return node;
   }
 
   table.innerHTML = `
     <div class="momentum-head">
-      <b>Ticker</b><b>Sektor</b><b>Skor</b><b>Status</b><b>Change</b><b>Vol</b><b>Value</b><b>Bonus</b><b>Sinyal</b>
+      <b>Ticker</b><b>Sektor</b><b>Skor</b><b>Status</b><b>Change</b><b>${["morning", "session2"].includes(payload.mode) ? "RVOL" : "Vol"}</b><b>VWAP</b><b>Value</b><b>Bonus</b><b>Sinyal</b>
     </div>
   `;
   payload.results.forEach((item) => {
     const momentum = item.momentum;
+    const vwapPct = momentum.price_vs_vwap_pct;
+    const volumeRatio = ["morning", "session2"].includes(payload.mode) ? momentum.time_volume_ratio : momentum.volume_ratio;
+    const totalBonus = Number(item.sector_heat_bonus || 0) + Number(item.sector_news_bonus || 0) + Number(item.overnight_bonus || 0) + Number(item.ml_bonus || 0);
     const row = document.createElement("div");
     row.className = "momentum-row";
     row.innerHTML = `
@@ -145,9 +163,10 @@ function renderMomentum(payload) {
       <strong>${score(momentum.score)}</strong>
       <span>${momentum.status}</span>
       <span>${momentum.change_pct.toFixed(2)}%</span>
-      <span>${momentum.volume_ratio.toFixed(2)}x</span>
+      <span>${volumeRatio === undefined || volumeRatio === null ? "-" : volumeRatio.toFixed(2) + "x"}</span>
+      <span>${vwapPct === undefined || vwapPct === null ? "-" : vwapPct.toFixed(2) + "%"}</span>
       <span>${formatPrice(momentum.value_today)}</span>
-      <span>${item.sector_heat_bonus ? "+" + item.sector_heat_bonus : "-"}</span>
+      <span>${totalBonus ? (totalBonus > 0 ? "+" : "") + totalBonus : "-"}</span>
       <span>${Object.values(momentum.signals || {}).join(", ")}</span>
     `;
     table.appendChild(row);
@@ -246,6 +265,36 @@ function sentimentBlock(sentiment) {
     section.appendChild(p);
   });
   return section;
+}
+
+function mlBlock(ml) {
+  const section = signalBlock("Machine Learning", {
+    Status: ml.status,
+    "Arah Besok": `${ml.arah} (${score(ml.probabilitas)}%)`,
+    "Prob Naik": `${score(ml.prob_naik)}%`,
+    "Prob Turun": `${score(ml.prob_turun)}%`,
+    "Akurasi Test": ml.akurasi_test === null || ml.akurasi_test === undefined ? "N/A" : `${score(ml.akurasi_test)}%`,
+    "Konsensus RF/LSTM": ml.konsensus || "UNKNOWN",
+    "Harga +7 Hari": ml.harga_7hari ? formatPrice(ml.harga_7hari) : "N/A",
+  });
+  (ml.per_hari || []).forEach((item) => {
+    const p = document.createElement("p");
+    p.innerHTML = `<b>Hari +${item.hari}</b><span>${formatPrice(item.harga)} (${item.perubahan_pct > 0 ? "+" : ""}${item.perubahan_pct.toFixed(2)}%)</span>`;
+    section.appendChild(p);
+  });
+  return section;
+}
+
+function fibonacciBlock(fibonacci) {
+  return signalBlock("Fibonacci", {
+    Trend: fibonacci.trend,
+    Swing: `${formatPrice(fibonacci.swing_low)} - ${formatPrice(fibonacci.swing_high)}`,
+    "Fib 38.2": formatPrice(fibonacci.levels?.["38.2"]),
+    "Fib 50.0": formatPrice(fibonacci.levels?.["50.0"]),
+    "Fib 61.8": formatPrice(fibonacci.levels?.["61.8"]),
+    Terdekat: `${fibonacci.nearest_level} (${formatPrice(fibonacci.nearest_price)})`,
+    Konfirmasi: fibonacci.signal,
+  });
 }
 
 function extraBlock(extras) {

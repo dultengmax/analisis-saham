@@ -5,6 +5,7 @@ plus sinyal per indikator.
 import pandas as pd
 import ta
 
+from analysis.fibonacci import evaluate_fibonacci, fibonacci_confirmation
 from config import (
     SMA_SHORT, SMA_LONG, EMA_SHORT, EMA_LONG, RSI_PERIOD,
     MACD_FAST, MACD_SLOW, MACD_SIGNAL, BB_PERIOD, STOCH_PERIOD, ADX_PERIOD,
@@ -140,6 +141,24 @@ def evaluate_technical(df: pd.DataFrame) -> dict:
         score += 8
 
     normalized_score = round((score / max_score) * 100, 1)
+    try:
+        fibonacci = evaluate_fibonacci(df)
+        fib_confirmation = fibonacci_confirmation(
+            fibonacci,
+            volume_confirmed=bool(
+                last["Volume"] > last["vol_sma20"] * 1.3
+                and last["Close"] > prev["Close"]
+            ),
+        )
+        fibonacci.update(fib_confirmation)
+        signals["fibonacci"] = fib_confirmation["signal"]
+        normalized_score = min(
+            100.0,
+            max(0.0, round(normalized_score + fib_confirmation["bonus"], 1)),
+        )
+    except ValueError as exc:
+        fibonacci = None
+        signals["fibonacci"] = str(exc)
 
     return {
         "technical_score": normalized_score,
@@ -147,5 +166,6 @@ def evaluate_technical(df: pd.DataFrame) -> dict:
         "last_close": round(float(last["Close"]), 2),
         "rsi": round(float(rsi_val), 1),
         "macd_hist": round(float(last["macd_hist"]), 4),
+        "fibonacci": fibonacci,
         "raw_df": df,
     }

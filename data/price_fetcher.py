@@ -58,7 +58,7 @@ def _raise_yahoo_error(exc: Exception):
 def normalize_ticker(ticker: str) -> str:
     """Pastikan ticker punya suffix .JK untuk saham IDX."""
     ticker = ticker.strip().upper()
-    if ticker.startswith("^"):
+    if ticker.startswith("^") or "." in ticker or "=" in ticker:
         return ticker
     if not ticker.endswith(".JK"):
         ticker += ".JK"
@@ -76,14 +76,14 @@ def fetch_price_history(ticker: str, period: str = PRICE_PERIOD,
     stock = yf.Ticker(yf_ticker)
     try:
         df = stock.history(period=period, interval=interval)
-    except Exception as exc:
-        df = _chart_to_history(_fetch_yahoo_chart(yf_ticker, period, interval))
+    except Exception:
+        df = pd.DataFrame()
 
     if df.empty:
-        raise ValueError(
-            f"Data harga untuk {yf_ticker} kosong. "
-            f"Cek kembali kode saham (harus kode emiten IDX, contoh: BBCA, TLKM, BBRI)."
-        )
+        try:
+            df = _chart_to_history(_fetch_yahoo_chart(yf_ticker, period, interval))
+        except Exception as exc:
+            _raise_yahoo_error(exc)
 
     df = df[["Open", "High", "Low", "Close", "Volume"]].copy()
     df.dropna(inplace=True)

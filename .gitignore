@@ -23,6 +23,7 @@ logs/
 
 # Large local models
 models/finbert/
+models/ml/
 
 # IDE / OS
 .vscode/

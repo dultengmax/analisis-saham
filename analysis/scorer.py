@@ -6,6 +6,7 @@ from config import (
     WEIGHT_BANDARMOLOGY,
     WEIGHT_FUNDAMENTAL,
     WEIGHT_LIQUIDITY,
+    WEIGHT_ML,
     WEIGHT_SENTIMENT,
     WEIGHT_TECHNICAL,
 )
@@ -50,6 +51,7 @@ def compute_composite(
     sentiment_result: dict | None = None,
     bandarmology_result: dict | None = None,
     liquidity_result: dict | None = None,
+    ml_result: dict | None = None,
 ) -> dict:
     tech_score = technical_result["technical_score"]
     fund_score = fundamental_result["fundamental_score"]
@@ -64,6 +66,13 @@ def compute_composite(
         else None
     )
     liquidity_score = _to_float(liquidity_result.get("score")) if liquidity_result else None
+    ml_score = (
+        _to_float(ml_result.get("skor"))
+        if ml_result
+        and ml_result.get("status") in {"READY", "PARTIAL"}
+        and ml_result.get("arah") in {"NAIK", "TURUN"}
+        else None
+    )
     rsi = _to_float(technical_result.get("rsi"))
     red_flags = evaluate_red_flags(fundamental_result)
 
@@ -88,6 +97,9 @@ def compute_composite(
     if liquidity_score is not None:
         extra_weight += WEIGHT_LIQUIDITY
         extra_score += liquidity_score * WEIGHT_LIQUIDITY
+    if ml_score is not None:
+        extra_weight += WEIGHT_ML
+        extra_score += ml_score * WEIGHT_ML
     composite = round(composite * (1 - extra_weight) + extra_score, 1)
 
     if red_flags:
@@ -113,6 +125,7 @@ def compute_composite(
         "sentiment_score": sentiment_score,
         "bandarmology_score": bandarmology_score,
         "liquidity_score": liquidity_score,
+        "ml_score": ml_score,
         "composite_score": composite,
         "recommendation": recommendation,
         "reason": reason,
@@ -130,6 +143,7 @@ def build_full_report(
     sentiment_result: dict | None = None,
     bandarmology_result: dict | None = None,
     liquidity_result: dict | None = None,
+    ml_result: dict | None = None,
 ) -> dict:
     """Kumpulkan semua hasil analisa jadi satu struktur laporan yang rapi."""
     return {
@@ -141,6 +155,7 @@ def build_full_report(
             "score": technical_result["technical_score"],
             "signals": technical_result["signals"],
             "rsi": technical_result["rsi"],
+            "fibonacci": technical_result.get("fibonacci"),
         },
         "fundamental": {
             "score": fundamental_result["fundamental_score"],
@@ -149,6 +164,7 @@ def build_full_report(
         },
         "sentiment": sentiment_result,
         "liquidity": liquidity_result,
+        "ml": ml_result,
         "bandarmology": bandarmology_result,
         "composite_score": composite["composite_score"],
         "recommendation": composite["recommendation"],

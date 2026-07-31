@@ -87,6 +87,25 @@ class ScorerRedFlagsTestCase(unittest.TestCase):
         self.assertEqual(result["liquidity_score"], 100.0)
         self.assertEqual(result["composite_score"], 74.5)
 
+    def test_ready_ml_score_uses_fifteen_percent(self):
+        technical = {"technical_score": 80.0, "rsi": 55.0}
+        fundamental = {"fundamental_score": 60.0, "raw": {}}
+
+        with_ml = compute_composite(
+            technical,
+            fundamental,
+            ml_result={"skor": 100, "arah": "NAIK", "status": "READY"},
+        )
+        failed_ml = compute_composite(
+            technical,
+            fundamental,
+            ml_result={"skor": 50, "arah": "UNKNOWN", "status": "ERROR"},
+        )
+
+        self.assertEqual(with_ml["ml_score"], 100.0)
+        self.assertEqual(with_ml["composite_score"], 74.5)
+        self.assertEqual(failed_ml["composite_score"], 70.0)
+
 
 if __name__ == "__main__":
     unittest.main()

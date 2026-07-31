@@ -20,6 +20,7 @@ from analysis.vwap import run_vwap
 from analysis.sentiment import SentimenAnalyzer
 from analysis.bandarmologi import BandarmologiAnalyzer
 from analysis.liquidity import evaluate_liquidity
+from analysis.ml_model import MLAnalyzer
 from backtest.backtester import run_backtest
 
 
@@ -35,6 +36,7 @@ def analyze_ticker(
     do_atr: bool = False,
     do_vwap: bool = False,
     do_sentiment: bool = False,
+    do_ml: bool = False,
 ) -> dict:
     print(f"\n{'='*60}\nMenganalisa {ticker.upper()} ...\n{'='*60}")
 
@@ -48,12 +50,14 @@ def analyze_ticker(
     )
     bandarmology_result = BandarmologiAnalyzer(ticker, price_df).analisis()
     liquidity_result = evaluate_liquidity(price_df)
+    ml_result = MLAnalyzer(ticker).prediksi() if do_ml else None
     composite = compute_composite(
         technical_result,
         fundamental_result,
         sentiment_result,
         bandarmology_result,
         liquidity_result,
+        ml_result,
     )
     report = build_full_report(
         ticker,
@@ -64,6 +68,7 @@ def analyze_ticker(
         sentiment_result,
         bandarmology_result,
         liquidity_result,
+        ml_result,
     )
 
     print_report(report)
@@ -138,6 +143,26 @@ def print_report(report: dict):
                 f"  - {item['sentimen']} ({item['confidence']:.1%}) "
                 f"- {item['judul']}"
             )
+
+    ml = report.get("ml")
+    if ml:
+        print(f"\n[MACHINE LEARNING] Skor: {ml['skor']}/100")
+        print(
+            f"  Prediksi besok : {ml['arah']} "
+            f"({ml['probabilitas']:.1f}%)"
+        )
+        print(f"  Prob naik/turun: {ml['prob_naik']:.1f}%/{ml['prob_turun']:.1f}%")
+        print(f"  Akurasi test   : {ml.get('akurasi_test') or 'N/A'}%")
+        print(f"  Konsensus model: {ml.get('konsensus', 'UNKNOWN')}")
+        if ml.get("harga_7hari"):
+            print(f"  Harga +7 hari  : Rp {ml['harga_7hari']:,.0f}")
+            for item in ml["per_hari"]:
+                print(
+                    f"  +{item['hari']}: Rp {item['harga']:,.0f} "
+                    f"({item['perubahan_pct']:+.2f}%)"
+                )
+        if ml.get("error"):
+            print(f"  Catatan        : {ml['error']}")
 
     bandarmology = report["bandarmology"]
     print(f"\n[BANDARMOLOGI] Skor: {bandarmology['skor']}/100")
@@ -243,6 +268,8 @@ def main():
                          help="Jalankan analisis VWAP untuk trader intraday")
     parser.add_argument("--sentiment", action="store_true",
                          help="Analisis berita dengan model FinBERT lokal")
+    parser.add_argument("--ml", action="store_true",
+                         help="Prediksi Random Forest dan LSTM")
     args = parser.parse_args()
 
     all_reports = []
@@ -257,6 +284,7 @@ def main():
                 do_atr=args.atr,
                 do_vwap=args.vwap,
                 do_sentiment=args.sentiment,
+                do_ml=args.ml,
             )
             all_reports.append(report)
         except Exception as e:
@@ -273,6 +301,7 @@ def main():
                     r["sentiment"]["skor"] if r.get("sentiment") else "N/A"
                 ),
                 "Skor Likuiditas": r["liquidity"]["score"],
+                "Skor ML": r["ml"]["skor"] if r.get("ml") else "N/A",
                 "Skor Bandarmologi": r["bandarmology"]["skor"],
                 "Skor Komposit": r["composite_score"],
                 "Rekomendasi": r["recommendation"],

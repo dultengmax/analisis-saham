@@ -1,8 +1,10 @@
 """Web UI ringan untuk Stock Analyzer."""
+from datetime import datetime
 import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from analysis.sentiment import SentimenAnalyzer
 
@@ -33,6 +35,7 @@ def analyze_for_web(ticker: str, options: dict) -> dict:
     from analysis.garch import run_garch
     from analysis.liquidity import evaluate_liquidity
     from analysis.monte_carlo import run_monte_carlo
+    from analysis.ml_model import MLAnalyzer
     from analysis.scorer import build_full_report, compute_composite
     from analysis.technical import evaluate_technical
     from analysis.vwap import run_vwap
@@ -48,8 +51,9 @@ def analyze_for_web(ticker: str, options: dict) -> dict:
     )
     bandarmology = BandarmologiAnalyzer(ticker, price_df).analisis()
     liquidity = evaluate_liquidity(price_df)
+    ml = MLAnalyzer(ticker).prediksi() if options.get("ml") else None
     composite = compute_composite(
-        technical, fundamental, sentiment, bandarmology, liquidity
+        technical, fundamental, sentiment, bandarmology, liquidity, ml
     )
     report = build_full_report(
         ticker,
@@ -60,6 +64,7 @@ def analyze_for_web(ticker: str, options: dict) -> dict:
         sentiment,
         bandarmology,
         liquidity,
+        ml,
     )
 
     extras = {}
@@ -102,33 +107,139 @@ def screen_for_web(limit: int = 15, max_tickers: int = 1009) -> dict:
     }
 
 
-def apply_sector_heat(rows: list[dict]) -> None:
+def apply_sector_heat(
+    rows: list[dict],
+    use_price_heat: bool = True,
+    use_sector_news: bool = False,
+) -> None:
+    from analysis.sector_news import jakarta_date, load_sector_news, normalize_sector
     from data.price_fetcher import fetch_quick_info
 
     sectors = {}
     for row in rows:
         info = fetch_quick_info(row["ticker"])
-        sector = info.get("sector") or "Unknown"
+        sector = normalize_sector(info.get("sector"), info.get("industry"))
         row["sector"] = sector
         sectors.setdefault(sector, []).append(row)
 
-    for sector_rows in sectors.values():
-        avg_change = sum(item["momentum"]["change_pct"] for item in sector_rows) / len(sector_rows)
-        bonus = 0
-        if len(sector_rows) >= 3 and avg_change > 0:
-            bonus = min(12, round(avg_change * 1.5 + len(sector_rows), 1))
-        elif len(sector_rows) >= 2 and avg_change >= 1:
-            bonus = min(8, round(avg_change * 1.2 + len(sector_rows), 1))
-        elif avg_change >= 5:
-            bonus = 5
+    if use_price_heat:
+        for sector_rows in sectors.values():
+            session2 = sector_rows[0]["momentum"].get("mode") == "session2"
+            avg_change = sum(
+                item["momentum"].get("session2_pct", item["momentum"]["change_pct"])
+                for item in sector_rows
+            ) / len(sector_rows)
+            bonus = 0
+            if len(sector_rows) >= 3 and avg_change > 0:
+                bonus = min(12, round(avg_change * 1.5 + len(sector_rows), 1))
+            elif len(sector_rows) >= 2 and avg_change >= 1:
+                bonus = min(8, round(avg_change * 1.2 + len(sector_rows), 1))
+            elif avg_change >= 5:
+                bonus = 5
 
-        for row in sector_rows:
-            row["sector_heat_bonus"] = bonus
-            if bonus:
-                row["momentum"]["score"] = min(100.0, round(row["momentum"]["score"] + bonus, 1))
-                row["momentum"]["signals"]["sector_heat"] = (
-                    f"sektor panas: {row['sector']} (+{bonus})"
+            for row in sector_rows:
+                row["sector_heat_bonus"] = bonus
+                if bonus:
+                    row["momentum"]["score"] = min(100.0, round(row["momentum"]["score"] + bonus, 1))
+                    row["momentum"]["signals"]["sector_heat"] = (
+                        f"sektor {'sesi 2 ' if session2 else ''}panas: {row['sector']} (+{bonus})"
+                    )
+
+    snapshot = load_sector_news() if use_sector_news else {}
+    if snapshot.get("market_date") == jakarta_date():
+        for sector, sector_rows in sectors.items():
+            news = snapshot.get("sectors", {}).get(sector)
+            if not news or not news.get("total"):
+                continue
+            score = float(news["score"])
+            bonus = 8 if score >= 70 else 5 if score >= 60 else -8 if score <= 30 else -5 if score <= 40 else 0
+            summary = {
+                key: news[key]
+                for key in ("score", "status", "total", "positive", "negative", "neutral")
+            }
+            summary["top_headline"] = news.get("headlines", [{}])[0].get("title")
+            for row in sector_rows:
+                row["sector_news"] = summary
+                row["sector_news_bonus"] = bonus
+                row["momentum"]["score"] = min(
+                    100.0, max(0.0, round(row["momentum"]["score"] + bonus, 1))
                 )
+                row["momentum"]["signals"]["sector_news"] = (
+                    f"berita sektor {news['status'].lower()} {score:.0f}/100 "
+                    f"({news['total']} berita, {bonus:+g})"
+                )
+
+    for row in rows:
+        score = row["momentum"]["score"]
+        row["momentum"]["status"] = (
+            "KUAT" if score >= 70 else "MENARIK" if score >= 45 else "LEMAH"
+        )
+
+
+def passes_momentum_filter(momentum: dict, mode: str) -> bool:
+    if momentum["score"] < 45:
+        return False
+
+    if mode == "session2":
+        return (
+            momentum["change_pct"] > 0
+            and momentum.get("session2_pct", 0) >= 0.8
+            and momentum.get("session2_value", 0) >= 100_000_000
+            and momentum.get("price_vs_vwap_pct", 0) >= 0
+            and (
+                momentum.get("session1_pct", 0) < 6
+                or momentum.get("acceleration", 0) >= 1.5
+            )
+        )
+
+    if mode == "morning":
+        return (
+            momentum.get("time_volume_ratio", 0) >= 1
+            and momentum.get("price_vs_vwap_pct", -100) >= 0
+            and momentum.get("value_today", 0) >= 100_000_000
+            and (
+                momentum.get("opening_range_breakout", False)
+                or momentum.get("distance_to_breakout_pct", -100) >= -0.5
+            )
+        )
+
+    return (
+        momentum["value_today"] >= 250_000_000
+        and (mode == "preopen" or momentum["change_pct"] > 0)
+    )
+
+
+def apply_ml_rerank(rows: list[dict]) -> int:
+    from analysis.ml_model import MLAnalyzer, MODEL_ROOT
+
+    covered = 0
+    for row in rows:
+        ticker = row["ticker"]
+        if not (MODEL_ROOT / "random_forest" / f"{ticker}_rf.pkl").is_file():
+            continue
+
+        try:
+            prediction = MLAnalyzer(ticker).prediksi_arah()
+            accuracy = prediction.get("akurasi_test")
+            if accuracy is None or accuracy < 52:
+                continue
+        except Exception:
+            continue
+
+        bonus = round((prediction["prob_naik"] - 50) * 0.2, 1)
+        momentum = row["momentum"]
+        momentum["score"] = min(100.0, max(0.0, round(momentum["score"] + bonus, 1)))
+        momentum["status"] = (
+            "KUAT" if momentum["score"] >= 70 else "MENARIK" if momentum["score"] >= 45 else "LEMAH"
+        )
+        momentum["signals"]["ml"] = (
+            f"RF naik {prediction['prob_naik']:.0f}% "
+            f"(akurasi uji {accuracy:.0f}%, {bonus:+g})"
+        )
+        row["ml"] = prediction
+        row["ml_bonus"] = bonus
+        covered += 1
+    return covered
 
 
 def momentum_for_web(
@@ -138,25 +249,78 @@ def momentum_for_web(
     use_relative_strength: bool = False,
     use_accumulation: bool = False,
     use_sector_heat: bool = False,
+    use_sector_news: bool = False,
+    use_ml: bool = False,
+    use_overnight: bool = False,
 ) -> dict:
-    from analysis.momentum import evaluate_daily_momentum, evaluate_session2_momentum
+    from analysis.momentum import (
+        evaluate_daily_momentum,
+        evaluate_morning_momentum,
+        evaluate_session2_momentum,
+    )
     from data.price_fetcher import fetch_price_history
 
     limit = max(1, min(limit, 50))
-    mode = mode if mode in {"preopen", "intraday", "session2"} else "preopen"
+    mode = mode if mode in {"preopen", "morning", "intraday", "session2"} else "preopen"
     universe = load_screener_universe()[:max(1, min(max_tickers, 1200))]
-    ihsg_df = (
-        fetch_price_history("^JKSE")
-        if mode == "preopen" and use_relative_strength
-        else None
+    now = datetime.now(ZoneInfo("Asia/Jakarta"))
+    session_hour = 14 if now.weekday() == 4 else 13
+    session_start = now.replace(
+        hour=session_hour,
+        minute=0 if session_hour == 14 else 30,
+        second=0,
+        microsecond=0,
     )
+    if mode == "session2" and (now.weekday() >= 5 or now < session_start):
+        warning = (
+            "Bursa sedang tutup."
+            if now.weekday() >= 5
+            else f"Sesi 2 belum dimulai. Jalankan kembali setelah {session_start:%H:%M} WIB."
+        )
+        return {
+            "results": [],
+            "checked": 0,
+            "qualified": 0,
+            "mode": mode,
+            "ml_covered": 0,
+            "overnight_covered": 0,
+            "warnings": [warning],
+            "errors": [],
+        }
+    morning_start = now.replace(hour=9, minute=15, second=0, microsecond=0)
+    if mode == "morning" and (now.weekday() >= 5 or now < morning_start):
+        warning = (
+            "Bursa sedang tutup."
+            if now.weekday() >= 5
+            else "Opening Range belum selesai. Jalankan kembali setelah 09:15 WIB."
+        )
+        return {
+            "results": [],
+            "checked": 0,
+            "qualified": 0,
+            "mode": mode,
+            "ml_covered": 0,
+            "overnight_covered": 0,
+            "warnings": [warning],
+            "errors": [],
+        }
+    ihsg_df = None
+    warnings = []
+    if mode == "preopen" and use_relative_strength:
+        try:
+            ihsg_df = fetch_price_history("^JKSE")
+        except Exception as exc:
+            warnings.append(f"RS vs IHSG dilewati: {exc}")
     rows = []
     errors = []
     for ticker in universe:
         try:
-            if mode == "session2":
-                momentum = evaluate_session2_momentum(
-                    fetch_price_history(ticker, period="5d", interval="5m")
+            if mode in {"morning", "session2"}:
+                intraday = fetch_price_history(ticker, period="60d", interval="5m")
+                momentum = (
+                    evaluate_morning_momentum(intraday)
+                    if mode == "morning"
+                    else evaluate_session2_momentum(intraday)
                 )
             else:
                 momentum = evaluate_daily_momentum(
@@ -166,29 +330,45 @@ def momentum_for_web(
                     use_relative_strength=use_relative_strength,
                     use_accumulation=use_accumulation,
                 )
-            if (
-                momentum["score"] >= 45
-                and momentum["value_today"] >= 250_000_000
-                and (mode == "preopen" or momentum["change_pct"] > 0)
-                and (
-                    mode != "session2"
-                    or momentum.get("session1_pct", 0) < 8
-                    or momentum.get("session2_pct", 0) >= 3
-                )
-            ):
+            if passes_momentum_filter(momentum, mode):
                 rows.append({"ticker": ticker, "momentum": momentum})
         except Exception as exc:
             errors.append({"ticker": ticker, "error": str(exc)})
 
-    if use_sector_heat and rows:
-        apply_sector_heat(rows)
+    if rows and (use_sector_heat or use_sector_news or (mode == "preopen" and use_overnight)):
+        apply_sector_heat(rows, use_sector_heat, use_sector_news)
+        rows = [row for row in rows if passes_momentum_filter(row["momentum"], mode)]
 
-    rows.sort(key=lambda item: item["momentum"]["score"], reverse=True)
+    overnight_covered = 0
+    if rows and mode == "preopen" and use_overnight:
+        from analysis.overnight import apply_overnight_catalysts
+
+        rows.sort(key=lambda item: item["momentum"]["score"], reverse=True)
+        # ponytail: score only displayed shortlist; widen after backtests show missed catalysts.
+        overnight_covered = apply_overnight_catalysts(rows[:limit], SENTIMENT_ANALYZER)
+        rows = [row for row in rows if passes_momentum_filter(row["momentum"], mode)]
+
+    ml_covered = apply_ml_rerank(rows) if mode == "session2" and use_ml else 0
+    if ml_covered:
+        rows = [row for row in rows if passes_momentum_filter(row["momentum"], mode)]
+    if mode == "session2" and use_ml and rows and not ml_covered:
+        warnings.append("ML dilewati: belum ada model RF layak untuk kandidat yang lolos.")
+
+    rows.sort(
+        key=lambda item: (
+            item["momentum"]["score"],
+            item["momentum"].get("time_volume_ratio") or 0,
+        ),
+        reverse=True,
+    )
     return {
         "results": rows[:limit],
         "checked": len(universe),
         "qualified": len(rows),
         "mode": mode,
+        "ml_covered": ml_covered,
+        "overnight_covered": overnight_covered,
+        "warnings": warnings,
         "errors": errors[:10],
     }
 
@@ -196,6 +376,11 @@ def momentum_for_web(
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = "/index.html" if self.path == "/" else self.path.split("?", 1)[0]
+        if path == "/api/sector-news":
+            from analysis.sector_news import load_sector_news
+
+            self._json(load_sector_news())
+            return
         file_path = (STATIC / path.lstrip("/")).resolve()
         if not str(file_path).startswith(str(STATIC)) or not file_path.is_file():
             self.send_error(404)
@@ -229,6 +414,9 @@ class Handler(BaseHTTPRequestHandler):
                     use_relative_strength=bool(payload.get("relativeStrength")),
                     use_accumulation=bool(payload.get("accumulation")),
                     use_sector_heat=bool(payload.get("sectorHeat")),
+                    use_sector_news=bool(payload.get("sectorNews")),
+                    use_ml=bool(payload.get("ml")),
+                    use_overnight=bool(payload.get("overnightCatalyst")),
                 ))
                 return
 
@@ -259,8 +447,17 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    from threading import Thread
+
+    from analysis.sector_news import run_sector_news_scheduler
+
     host = os.getenv("WEB_HOST", "127.0.0.1")
     port = int(os.getenv("WEB_PORT", "8002"))
+    Thread(
+        target=run_sector_news_scheduler,
+        args=(SENTIMENT_ANALYZER,),
+        daemon=True,
+    ).start()
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"Stock Analyzer UI: http://{host}:{port}")
     server.serve_forever()

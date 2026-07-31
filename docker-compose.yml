@@ -10,4 +10,5 @@ services:
       WEB_PORT: 8002
     volumes:
       - ./.cache:/app/.cache
-      - ./models:/app/models:ro
+      - ./models/finbert:/app/models/finbert:ro
+      - ./models/ml:/app/models/ml

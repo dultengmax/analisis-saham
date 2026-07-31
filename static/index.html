@@ -29,6 +29,7 @@
           <label><input type="checkbox" name="atr"> ATR</label>
           <label><input type="checkbox" name="vwap"> VWAP</label>
           <label><input type="checkbox" name="sentiment"> Sentimen</label>
+          <label><input type="checkbox" name="ml"> Machine Learning</label>
         </div>
 
         <button type="submit">Jalankan Analisa</button>
@@ -52,14 +53,18 @@
           <span>Mode momentum</span>
           <select id="momentum-mode">
             <option value="preopen">Pre-Open besok</option>
+            <option value="morning">Sesi Pagi / 09:15</option>
             <option value="session2">Sesi 2 / 13:30</option>
             <option value="intraday">Intraday / jelang close</option>
           </select>
         </label>
-        <div class="checks compact" aria-label="Pengaturan pre-open">
+        <div class="checks compact" aria-label="Pengaturan momentum">
           <label><input type="checkbox" id="relative-strength" checked> RS vs IHSG</label>
           <label><input type="checkbox" id="accumulation" checked> Akumulasi 5D</label>
           <label><input type="checkbox" id="sector-heat" checked> Sector Heat</label>
+          <label><input type="checkbox" id="sector-news" checked> Berita Sektor Pagi</label>
+          <label><input type="checkbox" id="overnight-catalyst" checked> Katalis Overnight</label>
+          <label><input type="checkbox" id="momentum-ml" checked> ML Rerank Sesi 2</label>
         </div>
         <button id="screen-btn" type="button">Auto Screener IDX</button>
         <button id="momentum-btn" type="button">Momentum Harian</button>
@@ -94,6 +99,7 @@
         <div><span>Likuiditas</span><b data-key="liquidity"></b></div>
         <div><span>Sentimen</span><b data-key="sentiment"></b></div>
         <div><span>Bandar</span><b data-key="bandarmology"></b></div>
+        <div><span>ML</span><b data-key="ml"></b></div>
         <div><span>Komposit</span><b data-key="composite"></b></div>
       </div>
 

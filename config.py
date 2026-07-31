@@ -9,6 +9,7 @@ WEIGHT_FUNDAMENTAL = 0.5
 WEIGHT_SENTIMENT = 0.1  # diterapkan ke 10% skor akhir saat sentimen dipilih
 WEIGHT_BANDARMOLOGY = 0.15
 WEIGHT_LIQUIDITY = 0.15
+WEIGHT_ML = 0.15
 
 # Periode data historis harga yang diambil untuk analisa teknikal
 PRICE_PERIOD = "1y"      # 1y, 6mo, 2y, 5y, max
