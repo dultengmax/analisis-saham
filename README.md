@@ -18,6 +18,8 @@ Analisa saham Indonesia berbasis teknikal, fundamental, likuiditas, bandarmologi
   - Intraday / jelang close
 - Relative Strength vs IHSG dan Akumulasi 5D untuk mode pre-open.
 - Fibonacci retracement 23,6-78,6 sebagai konfirmasi teknikal maksimal +/-8 poin.
+- Kondisi saham global: US, Asia, Eropa, VIX, dan USD/IDR sebagai konteks risk-on/risk-off.
+- Ranking ML lintas saham untuk semua mode momentum jika `data/momentum_rank_history.csv` tersedia.
 - Snapshot berita pagi per sektor IDX.
 - Prediksi Machine Learning per emiten dengan Random Forest dan LSTM CPU.
 - Web UI ringan tanpa framework frontend.
@@ -51,6 +53,9 @@ python main.py BBCA --backtest
 
 # Analisis berita dengan FinBERT lokal
 python main.py BBCA --sentiment
+
+# Cek kondisi saham global
+python main.py --global-market
 ```
 
 Kode saham cukup ditulis kode IDX seperti `BBCA`, `TLKM`, `BMRI`. Suffix `.JK` ditambahkan otomatis.
@@ -155,6 +160,13 @@ Universe ticker ada di:
 data/idx_universe.txt
 ```
 
+Emiten yang sedang suspend bisa dikeluarkan dari Auto Screener dan Momentum
+Screener lewat:
+
+```text
+data/suspended_tickers.txt
+```
+
 ### Momentum Screener
 
 Mode momentum:
@@ -170,6 +182,27 @@ Mode `Sesi 2 / 13:30` memakai VWAP intraday. Kandidat yang bertahan di atas VWAP
 Semua mode memakai Fibonacci dari 60 bar terakhir sebagai overlay konfirmasi.
 Bonus atau penalti dibatasi maksimal 8 poin dan baru positif jika didukung volume
 serta, untuk intraday, posisi harga di atas VWAP. Fibonacci bukan sinyal beli mandiri.
+
+Jika tersedia, momentum screener memakai model ranking lintas saham dari:
+
+```text
+data/momentum_rank_history.csv
+```
+
+Kolom target yang diterima: `target`, `is_top_gainer`, atau `next_return_pct`.
+Model ini memberi probabilitas kandidat terbaik dan bonus/penalti kecil ke skor
+momentum. Jika file histori belum ada atau label belum cukup, fitur dilewati.
+
+Jika tersedia, data broker/orderbook dibaca dari:
+
+```text
+data/broker_orderbook.csv
+```
+
+Schema mengikuti `data/broker_orderbook.csv.example`: `ticker`, `bid_volume`,
+`offer_volume`, `foreign_net_buy`, `broker_accumulation`,
+`transaction_frequency`, dan `running_trade_spike`. Data ini memberi overlay
+orderflow ke Momentum Screener; tanpa file ini screener tetap memakai data Yahoo.
 
 Opsi pre-open:
 

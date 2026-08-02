@@ -6,11 +6,13 @@ from pathlib import Path
 import pandas as pd
 
 import web_app
+from analysis.cross_sectional_ranker import apply_cross_sectional_ranking
 from analysis.momentum import (
     evaluate_daily_momentum,
     evaluate_morning_momentum,
     evaluate_session2_momentum,
 )
+from analysis.orderflow import apply_orderflow
 
 
 class MomentumScreenerTestCase(unittest.TestCase):
@@ -319,6 +321,76 @@ class MomentumScreenerTestCase(unittest.TestCase):
         self.assertEqual(rows[0]["momentum"]["score"], 56.0)
         self.assertEqual(rows[0]["ml_bonus"], 6.0)
         self.assertIn("RF naik 80%", rows[0]["momentum"]["signals"]["ml"])
+
+    def test_cross_sectional_ranker_scores_all_candidates_from_history(self):
+        history = pd.DataFrame([
+            {
+                "mode": "intraday",
+                "score": 80 if index % 2 else 30,
+                "change_pct": 5 if index % 2 else -1,
+                "volume_ratio": 3 if index % 2 else 0.5,
+                "target": 1 if index % 2 else 0,
+            }
+            for index in range(40)
+        ])
+        rows = [
+            {
+                "ticker": "FAST",
+                "momentum": {
+                    "score": 70.0,
+                    "change_pct": 5,
+                    "volume_ratio": 3,
+                    "signals": {},
+                },
+            },
+            {
+                "ticker": "SLOW",
+                "momentum": {
+                    "score": 50.0,
+                    "change_pct": -1,
+                    "volume_ratio": 0.5,
+                    "signals": {},
+                },
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "history.csv"
+            history.to_csv(path, index=False)
+            covered, warning = apply_cross_sectional_ranking(rows, "intraday", path)
+
+        self.assertIsNone(warning)
+        self.assertEqual(covered, 2)
+        self.assertGreater(
+            rows[0]["cross_sectional_rank"]["probability"],
+            rows[1]["cross_sectional_rank"]["probability"],
+        )
+        self.assertIn("cross_sectional_ml", rows[0]["momentum"]["signals"])
+
+    def test_orderflow_overlay_scores_available_broker_orderbook_data(self):
+        rows = [{
+            "ticker": "FAST",
+            "momentum": {"score": 60.0, "signals": {}},
+        }]
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "broker_orderbook.csv"
+            pd.DataFrame([{
+                "ticker": "FAST",
+                "bid_volume": 1_500_000,
+                "offer_volume": 500_000,
+                "foreign_net_buy": 250_000_000,
+                "broker_accumulation": 100_000_000,
+                "transaction_frequency": 700,
+                "running_trade_spike": 2.5,
+            }]).to_csv(path, index=False)
+            covered, warning = apply_orderflow(rows, path)
+
+        self.assertIsNone(warning)
+        self.assertEqual(covered, 1)
+        self.assertGreater(rows[0]["momentum"]["score"], 60)
+        self.assertIn("orderflow", rows[0])
+        self.assertIn("orderflow", rows[0]["momentum"]["signals"])
 
 
 if __name__ == "__main__":

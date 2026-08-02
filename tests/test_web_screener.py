@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 import web_app
@@ -22,6 +24,17 @@ class WebScreenerTestCase(unittest.TestCase):
         self.assertEqual(result["checked"], 3)
         self.assertEqual(result["qualified"], 2)
         self.assertEqual([item["ticker"] for item in result["results"]], ["BBCA", "TLKM"])
+
+    def test_load_screener_universe_skips_suspended_tickers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data = root / "data"
+            data.mkdir()
+            (data / "idx_universe.txt").write_text("BBCA\nSUSP\nHALT.JK\n", encoding="utf-8")
+            (data / "suspended_tickers.txt").write_text("SUSP\nHALT.JK\n", encoding="utf-8")
+
+            with patch.object(web_app, "ROOT", root):
+                self.assertEqual(web_app.load_screener_universe(), ["BBCA"])
 
 
 if __name__ == "__main__":

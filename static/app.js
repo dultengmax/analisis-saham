@@ -6,6 +6,12 @@ const screenerTemplate = document.querySelector("#screener-template");
 const momentumTemplate = document.querySelector("#momentum-template");
 const screenBtn = document.querySelector("#screen-btn");
 const momentumBtn = document.querySelector("#momentum-btn");
+const globalMarketEl = document.querySelector("#global-market");
+const globalSummaryEl = document.querySelector("#global-summary");
+const globalRefreshBtn = document.querySelector("#global-refresh");
+
+globalRefreshBtn.addEventListener("click", loadGlobalMarket);
+loadGlobalMarket();
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -154,7 +160,7 @@ function renderMomentum(payload) {
     const momentum = item.momentum;
     const vwapPct = momentum.price_vs_vwap_pct;
     const volumeRatio = ["morning", "session2"].includes(payload.mode) ? momentum.time_volume_ratio : momentum.volume_ratio;
-    const totalBonus = Number(item.sector_heat_bonus || 0) + Number(item.sector_news_bonus || 0) + Number(item.overnight_bonus || 0) + Number(item.ml_bonus || 0);
+    const totalBonus = Number(item.sector_heat_bonus || 0) + Number(item.sector_news_bonus || 0) + Number(item.overnight_bonus || 0) + Number(item.ml_bonus || 0) + Number(item.orderflow_bonus || 0) + Number(item.cross_sectional_bonus || 0);
     const row = document.createElement("div");
     row.className = "momentum-row";
     row.innerHTML = `
@@ -204,6 +210,37 @@ function renderScreener(payload) {
     table.appendChild(row);
   });
   return node;
+}
+
+async function loadGlobalMarket() {
+  globalSummaryEl.textContent = "Memuat kondisi global...";
+  globalMarketEl.innerHTML = "";
+  try {
+    const response = await fetch("/api/global-market");
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Gagal mengambil kondisi global.");
+    renderGlobalMarket(payload);
+  } catch (error) {
+    globalSummaryEl.textContent = error.message;
+  }
+}
+
+function renderGlobalMarket(payload) {
+  globalSummaryEl.textContent = `${payload.status} - skor ${score(payload.score)}. ${payload.as_of}`;
+  globalMarketEl.innerHTML = "";
+  (payload.markets || []).forEach((item) => {
+    const div = document.createElement("div");
+    div.className = `global-item ${item.status.toLowerCase()}`;
+    div.innerHTML = `
+      <b>${item.name}</b>
+      <span>${Number(item.price).toLocaleString("id-ID")}</span>
+      <strong>${item.change_pct > 0 ? "+" : ""}${item.change_pct.toFixed(2)}%</strong>
+    `;
+    globalMarketEl.appendChild(div);
+  });
+  if (!globalMarketEl.children.length) {
+    globalMarketEl.textContent = payload.errors?.[0]?.error || "Data global belum tersedia.";
+  }
 }
 
 function liquidityBlock(liquidity) {

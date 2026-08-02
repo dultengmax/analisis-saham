@@ -1,0 +1,4 @@
+# Isi kode emiten suspend agar tidak masuk Auto Screener dan Momentum Screener.
+# Satu kode per baris, contoh:
+# ABCD
+# WXYZ.JK

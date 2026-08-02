@@ -1,0 +1,2 @@
+ticker,bid_volume,offer_volume,foreign_net_buy,broker_accumulation,transaction_frequency,running_trade_spike
+BBCA,1200000,800000,500000000,300000000,650,2.4

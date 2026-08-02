@@ -172,6 +172,73 @@ input:not([type]):focus {
   padding-top: 16px;
 }
 
+.global-box {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 12px;
+}
+
+.global-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.global-head button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.global-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.global-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 8px;
+}
+
+.global-item b,
+.global-item strong {
+  font-size: 12px;
+}
+
+.global-item span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.global-item strong {
+  align-self: center;
+}
+
+.global-item.up strong {
+  color: var(--green);
+}
+
+.global-item.down strong {
+  color: var(--red);
+}
+
+.global-item.flat strong {
+  color: var(--amber);
+}
+
 button {
   min-height: 42px;
   border: 0;

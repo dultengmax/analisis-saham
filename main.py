@@ -21,6 +21,7 @@ from analysis.sentiment import SentimenAnalyzer
 from analysis.bandarmologi import BandarmologiAnalyzer
 from analysis.liquidity import evaluate_liquidity
 from analysis.ml_model import MLAnalyzer
+from analysis.global_market import fetch_global_market
 from backtest.backtester import run_backtest
 
 
@@ -251,9 +252,30 @@ def print_vwap(ticker: str, vwap: dict):
     print(f"  Price vs VWAP: {vwap['price_vs_vwap_pct']:.2f}%")
 
 
+def print_global_market(payload: dict):
+    print(f"\n--- Kondisi Saham Global ({payload['as_of']}) ---")
+    print(f"Status: {payload['status']} | Skor: {payload['score']}/100")
+    print(payload["summary"])
+    print(tabulate(
+        [
+            {
+                "Market": row["name"],
+                "Region": row["region"],
+                "Harga": row["price"],
+                "Change": f"{row['change_pct']:+.2f}%",
+            }
+            for row in payload["markets"]
+        ],
+        headers="keys",
+        tablefmt="simple",
+    ))
+    if payload.get("errors"):
+        print(f"Data gagal: {', '.join(item['name'] for item in payload['errors'])}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Stock Analyzer - Saham Indonesia")
-    parser.add_argument("tickers", nargs="+", help="Kode saham, contoh: BBCA TLKM BMRI")
+    parser.add_argument("tickers", nargs="*", help="Kode saham, contoh: BBCA TLKM BMRI")
     parser.add_argument("--backtest", action="store_true",
                          help="Jalankan backtest sinyal teknikal historis")
     parser.add_argument("--monte-carlo", action="store_true",
@@ -270,7 +292,16 @@ def main():
                          help="Analisis berita dengan model FinBERT lokal")
     parser.add_argument("--ml", action="store_true",
                          help="Prediksi Random Forest dan LSTM")
+    parser.add_argument("--global-market", action="store_true",
+                         help="Tampilkan kondisi indeks saham global")
     args = parser.parse_args()
+
+    if args.global_market:
+        print_global_market(fetch_global_market())
+    if not args.tickers:
+        if args.global_market:
+            return
+        parser.error("masukkan minimal satu kode saham atau gunakan --global-market")
 
     all_reports = []
     for ticker in args.tickers:

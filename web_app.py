@@ -20,11 +20,28 @@ CONTENT_TYPES = {
 
 def load_screener_universe() -> list[str]:
     path = ROOT / "data" / "idx_universe.txt"
+    suspended = load_suspended_tickers()
     return [
-        line.strip().upper()
+        ticker
         for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
+        if (ticker := normalize_idx_code(line)) and ticker not in suspended
     ]
+
+
+def normalize_idx_code(value: str) -> str:
+    ticker = value.split("#", 1)[0].strip().upper().removesuffix(".JK")
+    return ticker if ticker else ""
+
+
+def load_suspended_tickers() -> set[str]:
+    path = ROOT / "data" / "suspended_tickers.txt"
+    if not path.is_file():
+        return set()
+    return {
+        ticker
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if (ticker := normalize_idx_code(line))
+    }
 
 
 def analyze_for_web(ticker: str, options: dict) -> dict:
@@ -354,9 +371,26 @@ def momentum_for_web(
     if mode == "session2" and use_ml and rows and not ml_covered:
         warnings.append("ML dilewati: belum ada model RF layak untuk kandidat yang lolos.")
 
+    from analysis.orderflow import apply_orderflow
+
+    orderflow_covered, orderflow_warning = apply_orderflow(rows)
+    if orderflow_covered:
+        rows = [row for row in rows if passes_momentum_filter(row["momentum"], mode)]
+    elif orderflow_warning:
+        warnings.append(orderflow_warning)
+
+    from analysis.cross_sectional_ranker import apply_cross_sectional_ranking
+
+    rank_covered, rank_warning = apply_cross_sectional_ranking(rows, mode)
+    if rank_covered:
+        rows = [row for row in rows if passes_momentum_filter(row["momentum"], mode)]
+    elif rank_warning:
+        warnings.append(rank_warning)
+
     rows.sort(
         key=lambda item: (
             item["momentum"]["score"],
+            item.get("cross_sectional_rank", {}).get("probability", 0),
             item["momentum"].get("time_volume_ratio") or 0,
         ),
         reverse=True,
@@ -367,6 +401,8 @@ def momentum_for_web(
         "qualified": len(rows),
         "mode": mode,
         "ml_covered": ml_covered,
+        "orderflow_covered": orderflow_covered,
+        "cross_sectional_covered": rank_covered,
         "overnight_covered": overnight_covered,
         "warnings": warnings,
         "errors": errors[:10],
@@ -380,6 +416,11 @@ class Handler(BaseHTTPRequestHandler):
             from analysis.sector_news import load_sector_news
 
             self._json(load_sector_news())
+            return
+        if path == "/api/global-market":
+            from analysis.global_market import fetch_global_market
+
+            self._json(fetch_global_market())
             return
         file_path = (STATIC / path.lstrip("/")).resolve()
         if not str(file_path).startswith(str(STATIC)) or not file_path.is_file():
